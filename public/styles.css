@@ -1,0 +1,9 @@
+:root{--bg:#0a0f14;--panel:#0d1b24;--text:#e7f6ff;--accent:#22a6f2}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,Arial,sans-serif}
+.shell{max-width:900px;margin:0 auto;padding:16px}
+header{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.badge{background:var(--panel);border:1px solid #12303f;border-radius:10px;padding:4px 10px;font-size:12px}
+nav{display:flex;gap:8px;flex-wrap:wrap}
+nav button{background:var(--panel);color:var(--text);border:1px solid #12303f;border-radius:10px;padding:8px 12px;cursor:pointer}
+nav button.active{outline:2px solid var(--accent)}
+.card{background:var(--panel);border:1px solid #12303f;border-radius:10px;padding:16px;margin:12px 0}
