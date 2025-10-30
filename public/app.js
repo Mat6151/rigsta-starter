@@ -139,33 +139,256 @@ document.querySelectorAll('nav button').forEach(b=>{
   b.addEventListener('click',()=>{document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));b.classList.add('active');render(b.dataset.view);});
 });
 render('home');
-// Load Calculator Logic
-document.addEventListener('submit', e => {
-  if (e.target.id === 'calc-form') {
+// ====================== Rigsta Calc Engine ======================
+(function(){
+  const g = 9.80665; // m/s^2 (for any future mass->force conversions if needed)
+
+  // D/d efficiency (very simplified, conservative multipliers)
+  // You can refine this table to your rope manufacturer’s data.
+  function ddEfficiency(Dd){
+    if (!Dd || Dd <= 1) return 0.6;
+    if (Dd < 8)  return 0.7;
+    if (Dd < 12) return 0.8;
+    if (Dd < 16) return 0.9;
+    return 1.0;
+  }
+
+  // Angle factor AF = 1/cos(theta)
+  function angleFactor(deg){
+    const rad = deg * Math.PI / 180;
+    if (deg >= 89.9) return Infinity;
+    return 1/Math.cos(rad);
+  }
+
+  // Hitch multiplier (baseline before angle factor)
+  function hitchMultiplier(hitch, chokerRed){
+    if (hitch === 'basket') return 2.0;
+    if (hitch === 'choker') return Math.max(0.5, Math.min(1, chokerRed || 0.8));
+    return 1.0; // vertical
+  }
+
+  // Wind force (projected area). Default Cd=1.2 if not provided.
+  function windForce({units, area, wind, Cd=1.2}){
+    if (!area || !wind) return 0;
+    if (units === 'imperial'){
+      // F(lbf) = 0.00256 * Cd * A(ft^2) * V(mph)^2
+      return 0.00256 * Cd * area * wind * wind;
+    }
+    // Metric: F(N) = 0.613 * Cd * A(m^2) * V(m/s)^2
+    return 0.613 * Cd * area * wind * wind;
+  }
+
+  // Convert helpers
+  const toLb = kg => kg*2.2046226218;
+  const toKg = lb => lb/2.2046226218;
+
+  // Build a line of warning HTML
+  function warn(txt){ return `<div style="color:#ffb703">⚠️ ${txt}</div>`; }
+  function ok(txt){ return `<div style="color:#28c76f">✅ ${txt}</div>`; }
+
+  // Core compute
+  function compute(inputs){
+    const {
+      units, load, rigWeight, legs, hitch, angle, chokerRed, Dd, DF,
+      area, wind, d1, d2, shareA, shareB, targetWLL
+    } = inputs;
+
+    // Normalize: work internally in kilograms-force (kgf) for weights, and newtons for wind if metric; convert at the end.
+    // For simplicity, treat numeric entries as "kg" or "lb" depending on units.
+    let baseLoadKg = units==='imperial' ? toKg(load||0) : (load||0);
+    let rigKg      = units==='imperial' ? toKg(rigWeight||0) : (rigWeight||0);
+    let totalKg    = baseLoadKg + rigKg;
+
+    // Add wind load as equivalent weight (very simplified):
+    // Convert wind force to kgf: kgf = N / g, and lbf is already a force so convert to kgf.
+    let windKgf = 0;
+    if (area && wind){
+      if (units==='imperial'){
+        const F_lbf = windForce({units, area, wind});  // lbf
+        windKgf = toKg(F_lbf); // 1 lbf ≈ 0.45359237 kgf
+      } else {
+        const F_N = windForce({units, area, wind});    // N
+        windKgf = F_N / g; // to kgf
+      }
+    }
+
+    // Dynamic factor
+    const DFv = Math.max(1, DF || 1);
+
+    // Apply hitch multiplier (baseline) and angle factor
+    const AF = angleFactor(angle||0);
+    const HM = hitchMultiplier(hitch, chokerRed);
+
+    // Two-point COG share (if d1 & d2 provided and legs>=2):
+    // Vertical share A = W * (d2 / (d1+d2)), B = W * (d1 / (d1+d2))
+    // Then expand to legs proportionally (for 2-leg primary case; for 3/4 legs we distribute equally by group)
+    let verticalShares = null;
+    if ((d1>0 || d2>0) && (legs>=2)){
+      const sum = (d1||0)+(d2||0);
+      if (sum>0){
+        const WA = totalKg * (d2/sum);
+        const WB = totalKg * (d1/sum);
+        verticalShares = {A: WA, B: WB};
+      }
+    }
+
+    // Manual multi-crane percentage (optional)
+    let craneShare = null;
+    if ((shareA||shareB) && (shareA+shareB>0)){
+      const sA = shareA||0, sB = shareB||0, sTot = sA+sB;
+      craneShare = {
+        A: (totalKg * (sA/sTot)),
+        B: (totalKg * (sB/sTot))
+      };
+    }
+
+    // Effective working weight incl. wind & DF
+    const effectiveKg = (totalKg + windKgf) * DFv;
+
+    // D/d efficiency
+    const Edd = ddEfficiency(Dd||0);
+
+    // Calculate per-leg required WLL (kgf) — base scenarios:
+    // If we have a 2-point COG share, compute two groups first, then per-leg tension = (vertical share / group legs / HM) * AF / Edd
+    // Else evenly distribute vertically: (effectiveKg / legs / HM) * AF / Edd
+    const legResults = [];
+
+    function perLegReqWLL(vertShareKg, legCountInGroup){
+      const basePerLeg = (vertShareKg / Math.max(1, legCountInGroup)) / Math.max(0.0001, HM);
+      const tension = basePerLeg * AF / Math.max(0.0001, Edd);
+      return tension; // kgf
+    }
+
+    if (verticalShares && legs===2){
+      // A and B one leg each
+      legResults.push({label:'Leg A', reqKgf: perLegReqWLL((verticalShares.A + windKgf*0.5)*DFv, 1)});
+      legResults.push({label:'Leg B', reqKgf: perLegReqWLL((verticalShares.B + windKgf*0.5)*DFv, 1)});
+    } else if (verticalShares && (legs===4)){
+      // A & B are two-leg groups
+      legResults.push({label:'Leg A1', reqKgf: perLegReqWLL((verticalShares.A + windKgf*0.5)*DFv, 2)});
+      legResults.push({label:'Leg A2', reqKgf: perLegReqWLL((verticalShares.A + windKgf*0.5)*DFv, 2)});
+      legResults.push({label:'Leg B1', reqKgf: perLegReqWLL((verticalShares.B + windKgf*0.5)*DFv, 2)});
+      legResults.push({label:'Leg B2', reqKgf: perLegReqWLL((verticalShares.B + windKgf*0.5)*DFv, 2)});
+    } else {
+      // Even share among legs
+      const perLegKgf = perLegReqWLL(effectiveKg, legs);
+      for (let i=1;i<=legs;i++) legResults.push({label:`Leg ${i}`, reqKgf: perLegKgf});
+    }
+
+    // Multi-crane share (informational)
+    let cranes = null;
+    if (craneShare){
+      cranes = {
+        A_kg: craneShare.A * DFv,
+        B_kg: craneShare.B * DFv
+      };
+    }
+
+    // Pass/Fail vs Target WLL per leg
+    const tgtKgf = units==='imperial' ? toKg(targetWLL||0) : (targetWLL||0);
+    const checks = legResults.map(L => ({
+      label: L.label,
+      req: units==='imperial' ? toLb(L.reqKgf) : L.reqKgf,
+      pass: tgtKgf ? (L.reqKgf <= tgtKgf) : null
+    }));
+
+    // Build summary strings in chosen units
+    const toUnit = (kg)=> units==='imperial' ? toLb(kg) : kg;
+    const uMass = units==='imperial' ? 'lb' : 'kg';
+    const uArea = units==='imperial' ? 'ft²' : 'm²';
+    const uWind = units==='imperial' ? 'mph' : 'm/s';
+
+    return {
+      summary: {
+        units,
+        total: toUnit(totalKg),
+        windEq: toUnit(windKgf),
+        DF: DFv,
+        HM, AF, Edd
+      },
+      shares: {
+        verticalShares: verticalShares ? {
+          A: toUnit(verticalShares.A), B: toUnit(verticalShares.B)
+        } : null,
+        cranes: cranes ? {
+          A: toUnit(cranes.A_kg), B: toUnit(cranes.B_kg)
+        } : null
+      },
+      legs: checks,
+      unitsLabel: {uMass, uArea, uWind}
+    };
+  }
+
+  // Wire up UI
+  document.addEventListener('submit', (e)=>{
+    if (e.target.id !== 'calc-form') return;
     e.preventDefault();
-    const total = parseFloat(document.getElementById('total-load').value);
-    const legs = parseInt(document.getElementById('legs').value);
-    const angle = parseFloat(document.getElementById('angle').value);
 
-    if (!total || !legs || !angle) return;
+    // Read inputs
+    const val = id => parseFloat(document.getElementById(id).value);
+    const sval = id => document.getElementById(id).value;
 
-    const radians = angle * Math.PI / 180;
-    const angleFactor = 1 / Math.cos(radians);
-    const perLeg = (total / legs) * angleFactor;
+    const inputs = {
+      units: sval('units'),
+      load: val('load'),
+      rigWeight: val('rigWeight'),
+      legs: parseInt(sval('legs'),10),
+      hitch: sval('hitch'),
+      angle: val('angle'),
+      chokerRed: val('chokerRed'),
+      Dd: val('Dd'),
+      DF: val('DF'),
+      area: val('area'),
+      wind: val('wind'),
+      d1: val('d1'),
+      d2: val('d2'),
+      shareA: val('shareA'),
+      shareB: val('shareB'),
+      targetWLL: val('targetWLL')
+    };
 
-    document.getElementById('angle-factor').textContent = angleFactor.toFixed(2);
-    document.getElementById('load-per-leg').textContent = perLeg.toFixed(0);
-    const warning = document.getElementById('warning');
-    warning.textContent = perLeg > 1000 ? '⚠️ Over recommended SWL (1000 kg per leg)' : '';
-    document.getElementById('calc-result').style.display = 'block';
-  }
-});
+    const out = compute(inputs);
 
-// Basic PDF export using browser print
-document.addEventListener('click', e => {
-  if (e.target.id === 'pdf-btn') {
-    window.print();
-  }
-});
+    // Render results
+    const res = document.getElementById('results');
+    const s = out.summary, sh = out.shares;
+    const sumEl = document.getElementById('res-summary');
+    sumEl.innerHTML = `
+      <div class="grid">
+        <div><b>Total (incl. rigging):</b> ${s.total.toFixed(2)} ${out.unitsLabel.uMass}</div>
+        <div><b>Wind equiv. weight:</b> ${s.windEq.toFixed(2)} ${out.unitsLabel.uMass}</div>
+        <div><b>Dynamic Factor (DF):</b> ${s.DF.toFixed(2)}</div>
+        <div><b>Hitch Multiplier (HM):</b> ${s.HM.toFixed(2)}</div>
+        <div><b>Angle Factor (AF):</b> ${s.AF===Infinity?'∞':s.AF.toFixed(3)}</div>
+        <div><b>D/d Efficiency:</b> ${s.Edd.toFixed(2)}</div>
+      </div>
+      ${sh.verticalShares ? `<div style="margin-top:8px"><b>COG Vertical Shares:</b> A=${sh.verticalShares.A.toFixed(2)} ${out.unitsLabel.uMass}, B=${sh.verticalShares.B.toFixed(2)} ${out.unitsLabel.uMass}</div>`:''}
+      ${sh.cranes ? `<div><b>Multi-crane Load (with DF):</b> A=${sh.cranes.A.toFixed(2)} ${out.unitsLabel.uMass}, B=${sh.cranes.B.toFixed(2)} ${out.unitsLabel.uMass}</div>`:''}
+    `;
+
+    const legsEl = document.getElementById('res-legs');
+    legsEl.innerHTML = out.legs.map(L=>{
+      const pf = (L.pass===null) ? '' : (L.pass ? '✅ OK' : '⚠️ OVER');
+      return `<div>${L.label}: <b>${L.req.toFixed(2)} ${out.unitsLabel.uMass}</b> ${pf}</div>`;
+    }).join('');
+
+    const warnEl = document.getElementById('res-warnings');
+    const warnings = [];
+    if (s.AF>2) warnings.push('Very steep sling angle — tension grows rapidly. Consider increasing angle or using spreader.');
+    if (s.Edd<1) warnings.push('D/d ratio reduces capacity. Verify manufacturer’s sheave requirements.');
+    if (!document.getElementById('targetWLL').value) warnings.push('Enter a Target WLL per leg to see Pass/Fail.');
+    warnEl.innerHTML = warnings.length ? warnings.map(w=>`<div style="color:#ffb703">⚠️ ${w}</div>`).join('') : `<div style="color:#28c76f">No warnings at this time.</div>`;
+
+    res.style.display = 'block';
+  });
+
+  // Print/PDF
+  document.addEventListener('click',(e)=>{
+    if (e.target && e.target.id==='printPdf') {
+      window.print();
+    }
+  });
+})();
+
 
 if('serviceWorker'in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js'));}
