@@ -44,4 +44,33 @@ document.querySelectorAll('nav button').forEach(b=>{
   b.addEventListener('click',()=>{document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));b.classList.add('active');render(b.dataset.view);});
 });
 render('home');
+// Load Calculator Logic
+document.addEventListener('submit', e => {
+  if (e.target.id === 'calc-form') {
+    e.preventDefault();
+    const total = parseFloat(document.getElementById('total-load').value);
+    const legs = parseInt(document.getElementById('legs').value);
+    const angle = parseFloat(document.getElementById('angle').value);
+
+    if (!total || !legs || !angle) return;
+
+    const radians = angle * Math.PI / 180;
+    const angleFactor = 1 / Math.cos(radians);
+    const perLeg = (total / legs) * angleFactor;
+
+    document.getElementById('angle-factor').textContent = angleFactor.toFixed(2);
+    document.getElementById('load-per-leg').textContent = perLeg.toFixed(0);
+    const warning = document.getElementById('warning');
+    warning.textContent = perLeg > 1000 ? '⚠️ Over recommended SWL (1000 kg per leg)' : '';
+    document.getElementById('calc-result').style.display = 'block';
+  }
+});
+
+// Basic PDF export using browser print
+document.addEventListener('click', e => {
+  if (e.target.id === 'pdf-btn') {
+    window.print();
+  }
+});
+
 if('serviceWorker'in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js'));}
