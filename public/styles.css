@@ -1,9 +1,132 @@
-:root{--bg:#0a0f14;--panel:#0d1b24;--text:#e7f6ff;--accent:#22a6f2}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,Arial,sans-serif}
-.shell{max-width:900px;margin:0 auto;padding:16px}
-header{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.badge{background:var(--panel);border:1px solid #12303f;border-radius:10px;padding:4px 10px;font-size:12px}
-nav{display:flex;gap:8px;flex-wrap:wrap}
-nav button{background:var(--panel);color:var(--text);border:1px solid #12303f;border-radius:10px;padding:8px 12px;cursor:pointer}
-nav button.active{outline:2px solid var(--accent)}
-.card{background:var(--panel);border:1px solid #12303f;border-radius:10px;padding:16px;margin:12px 0}
+/* Rigsta – Brand Theme (Dark, high-contrast, field-friendly) */
+:root{
+  /* Brand palette */
+  --bg:#0a1014;            /* app background */
+  --panel:#0f1d27;         /* cards/nav panels */
+  --panel-2:#0b2733;       /* inputs/buttons base */
+  --border:#173445;        /* subtle borders */
+  --text:#e9f6ff;          /* main text */
+  --muted:#9fc8da;         /* secondary text */
+  --accent:#22a6f2;        /* brand accent (buttons/active) */
+  --accent-2:#59c2ff;      /* accent hover */
+  --ok:#28c76f;            /* success */
+  --warn:#ffb703;          /* warning */
+  --err:#ff5e57;           /* error */
+
+  /* Layout rhythm */
+  --pad:16px;
+  --pad-lg:20px;
+  --rad:14px;
+  --shadow: 0 6px 20px rgba(0,0,0,.25);
+
+  /* Typography */
+  --font: system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif;
+  --h1: 28px;
+  --h2: 22px;
+  --h3: 16px;
+  --body: 15px;
+  --small: 12px;
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font: 400 var(--body)/1.5 var(--font);
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+}
+
+/* Shell containers */
+.shell{max-width:1100px;margin:0 auto;padding:var(--pad)}
+header.shell{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding-top:22px}
+main.shell{min-height:60vh}
+
+/* Headings */
+h1{margin:0;font-size:var(--h1);font-weight:800;letter-spacing:.2px}
+h2{margin:0 0 8px;font-size:var(--h2);font-weight:700}
+h3{margin:0 0 6px;font-size:var(--h3);font-weight:600}
+
+/* Badge under the title */
+.badge{
+  background:linear-gradient(180deg, #0f2631, #0c202b);
+  border:1px solid var(--border);
+  color:var(--muted);
+  border-radius:10px;
+  padding:4px 10px;
+  font-size:var(--small);
+}
+
+/* Top nav */
+nav{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
+nav button{
+  background:var(--panel);
+  color:var(--text);
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:10px 14px;
+  cursor:pointer;
+  transition: all .15s ease;
+}
+nav button:hover{transform:translateY(-1px);box-shadow:var(--shadow)}
+nav button.active{outline:2px solid var(--accent);}
+
+/* Cards & panels */
+.card{
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:var(--rad);
+  padding:var(--pad-lg);
+  margin:12px 0;
+  box-shadow:var(--shadow);
+}
+.kpi{
+  background:var(--panel-2);
+  border:1px dashed var(--border);
+  border-radius:12px;
+  padding:12px;
+}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+
+/* Inputs */
+input, select, .calc, .btn{
+  background:var(--panel-2);
+  color:var(--text);
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:10px 12px;
+  min-width:160px;
+  outline:none;
+}
+input:focus, select:focus{border-color:var(--accent)}
+label{display:block;font-size:var(--small);color:var(--muted);margin-bottom:6px}
+
+/* Primary action button */
+.calc, .btn-primary{
+  background:linear-gradient(180deg, var(--accent), var(--accent-2));
+  border:1px solid #135b88;
+  color:#001824;
+  font-weight:700;
+  cursor:pointer;
+}
+.calc:hover, .btn-primary:hover{filter:brightness(1.05)}
+
+/* Footer */
+.foot{opacity:.85;color:var(--muted)}
+a{color:var(--accent)}
+hr{border:0;border-top:1px solid var(--border);margin:16px 0}
+
+/* Responsive tweaks */
+@media (max-width:640px){
+  :root{ --h1:24px; --h2:20px; --body:15px; }
+  nav{width:100%;margin-left:0}
+}
+
+/* Utility (optional) */
+.row{display:flex;gap:12px;flex-wrap:wrap}
+pre.code{
+  background:#06141b;border:1px solid #112a36;border-radius:10px;
+  padding:12px;overflow:auto;font-size:13px;color:#cfe9f7
+}
